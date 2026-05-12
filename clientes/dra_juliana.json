@@ -1,0 +1,26 @@
+{
+  "nome_negocio": "Consultório Dra. Juliana",
+  "artigo": "o",
+  "tipo": "psicologa",
+  "servicos": [
+    {
+      "nome": "Consulta individual (adulto)",
+      "preco": "A combinar conforme cada caso"
+    },
+    {
+      "nome": "Consulta individual (adolescente)",
+      "preco": "A combinar conforme cada caso"
+    },
+    {
+      "nome": "Sessão de casal",
+      "preco": "A combinar conforme cada caso"
+    }
+  ],
+  "horarios": "Quartas e quintas-feiras, das 6h às 20h",
+  "endereco": "Atendimento online via Google Meet / Zoom",
+  "agendamento": "Agende pelo WhatsApp com a própria Dra. Juliana",
+  "tom": "acolhedor, calmo, respeitoso e profissional",
+  "saudacao": "Olá! Seja bem-vindo ao consultório da Dra. Juliana 🌿",
+  "pagamentos": "Pix, transferência bancária ou cartão",
+  "obs_extras": "Atendimento 100% online. Primeira sessão é uma entrevista de acolhimento."
+}
