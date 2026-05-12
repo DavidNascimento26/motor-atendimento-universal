@@ -1,0 +1,19 @@
+{
+  "nome_negocio": "Salão da Maria",
+  "artigo": "o",
+  "tipo": "salao",
+  "servicos": [
+    {"nome": "Corte feminino", "preco": "R$60"},
+    {"nome": "Escova progressiva", "preco": "R$180"},
+    {"nome": "Coloração", "preco": "A partir de R$120"},
+    {"nome": "Manicure", "preco": "R$35"},
+    {"nome": "Design de sobrancelha", "preco": "R$40"}
+  ],
+  "horarios": "Segunda a Sexta das 9h às 18h, Sábado das 9h às 15h",
+  "endereco": "Av. Principal, 456 - Bairro Jardim",
+  "agendamento": "Agende pelo WhatsApp: (11) 98888-1111",
+  "tom": "elegante, carinhoso e profissional",
+  "saudacao": "Olá linda! Bem-vinda ao Salão da Maria 💅✨",
+  "pagamentos": "Pix, dinheiro e todos os cartões",
+  "obs_extras": "Agendamento com 2h de antecedência mínima"
+}
