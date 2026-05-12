@@ -1,0 +1,20 @@
+{
+  "nome_negocio": "Pet Shop Rex",
+  "artigo": "o",
+  "tipo": "petshop",
+  "servicos": [
+    {"nome": "Banho pequeno porte", "preco": "R$45"},
+    {"nome": "Banho médio porte", "preco": "R$65"},
+    {"nome": "Banho grande porte", "preco": "R$90"},
+    {"nome": "Tosa higiênica", "preco": "R$35"},
+    {"nome": "Tosa completa", "preco": "R$80"},
+    {"nome": "Consulta veterinária", "preco": "R$120"}
+  ],
+  "horarios": "Segunda a Sábado das 8h às 18h",
+  "endereco": "Rua dos Animais, 789 - Vila Nova",
+  "agendamento": "Agende pelo WhatsApp: (11) 97777-2222",
+  "tom": "alegre, amoroso com animais e prestativo",
+  "saudacao": "Olá! Aqui é o Pet Shop Rex 🐾 Que bichinho lindo você tem!",
+  "pagamentos": "Pix, dinheiro e cartões",
+  "obs_extras": "O pet precisa estar com vacinas em dia para banho e tosa"
+}
