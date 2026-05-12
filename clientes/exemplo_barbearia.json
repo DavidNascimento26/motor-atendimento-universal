@@ -1,0 +1,18 @@
+{
+  "nome_negocio": "Barbearia do João",
+  "artigo": "a",
+  "tipo": "barbearia",
+  "servicos": [
+    {"nome": "Corte masculino", "preco": "R$35"},
+    {"nome": "Barba", "preco": "R$25"},
+    {"nome": "Corte + Barba", "preco": "R$55"},
+    {"nome": "Hidratação capilar", "preco": "R$40"}
+  ],
+  "horarios": "Terça a Sábado, das 9h às 19h. Domingo e Segunda fechado.",
+  "endereco": "Rua das Flores, 123 - Centro",
+  "agendamento": "Agende aqui pelo WhatsApp ou ligue: (11) 99999-0000",
+  "tom": "descontraído, jovial e amigável",
+  "saudacao": "E aí! Aqui é a Barbearia do João 💈",
+  "pagamentos": "Dinheiro, Pix e cartão de débito/crédito",
+  "obs_extras": "Aceitamos walk-in (sem agendamento) se houver vaga"
+}
