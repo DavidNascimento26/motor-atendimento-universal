@@ -125,7 +125,7 @@ def enviar_mensagem_whatsapp(numero: str, texto: str, phone_number_id: str) -> b
         logger.warning("WHATSAPP_TOKEN não configurado — resposta gerada mas não enviada ao WhatsApp.")
         return False
 
-    url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
