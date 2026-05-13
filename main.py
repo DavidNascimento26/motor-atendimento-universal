@@ -173,24 +173,16 @@ def listar_clientes():
     except Exception:
         return {"clientes_ativos": [], "total": 0}
 
-@app.get("/webhook/{cliente_id}")
-def verificar_webhook(
-    cliente_id: str,
-    hub_mode: str = None,
-    hub_challenge: str = None,
-    hub_verify_token: str = None
-):
-    """Verificação de webhook — necessário para Meta WhatsApp API"""
+def _verificar_token(hub_mode, hub_verify_token, hub_challenge, label=""):
+    """Lógica reutilizável de verificação de webhook Meta"""
     verify_token = os.environ.get("VERIFY_TOKEN", "motor123")
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
-        logger.info(f"Webhook verificado para cliente: {cliente_id}")
+        logger.info(f"Webhook verificado {label}")
         return PlainTextResponse(content=hub_challenge)
     raise HTTPException(status_code=403, detail="Token de verificação inválido")
 
-@app.post("/webhook/{cliente_id}")
-async def receber_mensagem(cliente_id: str, request: Request):
-    """Recebe mensagem do WhatsApp, gera resposta com IA e envia de volta"""
-
+async def _processar_mensagem(cliente_id: str, request: Request):
+    """Lógica reutilizável: recebe payload, gera resposta e envia ao WhatsApp"""
     cfg = carregar_cliente(cliente_id)
     if not cfg:
         raise HTTPException(status_code=404, detail=f"Cliente '{cliente_id}' não encontrado")
@@ -200,9 +192,8 @@ async def receber_mensagem(cliente_id: str, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="JSON inválido")
 
-    logger.info(f"Payload recebido para {cliente_id}: {json.dumps(data)[:300]}")
+    logger.info(f"[{cliente_id}] Payload: {json.dumps(data)[:300]}")
 
-    # Tenta extrair nos dois formatos — Meta tem priority por retornar phone_number_id
     texto, numero, phone_number_id = extrair_mensagem_meta(data)
     formato = "meta"
     if not texto:
@@ -210,6 +201,7 @@ async def receber_mensagem(cliente_id: str, request: Request):
         formato = "zapi"
 
     if not texto:
+        logger.info(f"[{cliente_id}] Nenhuma mensagem de texto no payload — ignorando")
         return {"status": "ok", "info": "Nenhuma mensagem de texto encontrada"}
 
     logger.info(f"[{cliente_id}] [{formato}] De {numero}: {texto}")
@@ -218,15 +210,13 @@ async def receber_mensagem(cliente_id: str, request: Request):
     resposta = gerar_resposta_ia(system_prompt, texto)
     logger.info(f"[{cliente_id}] Resposta gerada: {resposta}")
 
-    # Envia de volta ao WhatsApp (apenas se vier da Meta e tiver phone_number_id)
+    # Usa phone_number_id do payload ou o da variável de ambiente como fallback
+    pid = phone_number_id or os.environ.get("WHATSAPP_PHONE_ID")
     enviado = False
-    if formato == "meta" and phone_number_id:
-        enviado = enviar_mensagem_whatsapp(numero, resposta, phone_number_id)
-    elif not phone_number_id:
-        # Tenta usar o phone_number_id padrão configurado como variável de ambiente
-        phone_id_env = os.environ.get("WHATSAPP_PHONE_ID")
-        if phone_id_env and numero:
-            enviado = enviar_mensagem_whatsapp(numero, resposta, phone_id_env)
+    if pid and numero:
+        enviado = enviar_mensagem_whatsapp(numero, resposta, pid)
+    else:
+        logger.warning(f"[{cliente_id}] WHATSAPP_PHONE_ID não disponível — resposta não enviada ao WhatsApp")
 
     return {
         "status": "ok",
@@ -236,6 +226,51 @@ async def receber_mensagem(cliente_id: str, request: Request):
         "resposta_gerada": resposta,
         "enviado_whatsapp": enviado
     }
+
+# ── Rotas com cliente na URL (uso avançado) ──────────────────────────────────
+
+@app.get("/webhook/{cliente_id}")
+def verificar_webhook(
+    cliente_id: str,
+    hub_mode: str = None,
+    hub_challenge: str = None,
+    hub_verify_token: str = None
+):
+    """Verificação de webhook com cliente específico"""
+    return _verificar_token(hub_mode, hub_verify_token, hub_challenge, label=f"cliente={cliente_id}")
+
+@app.post("/webhook/{cliente_id}")
+async def receber_mensagem(cliente_id: str, request: Request):
+    """Recebe mensagem do WhatsApp para cliente específico"""
+    return await _processar_mensagem(cliente_id, request)
+
+# ── Rota genérica /webhook (use esta URL no painel da Meta) ──────────────────
+
+@app.get("/webhook")
+def verificar_webhook_padrao(
+    hub_mode: str = None,
+    hub_challenge: str = None,
+    hub_verify_token: str = None
+):
+    """Verificação de webhook — URL simples para configurar no painel da Meta"""
+    return _verificar_token(hub_mode, hub_verify_token, hub_challenge, label="rota padrão")
+
+@app.post("/webhook")
+async def receber_mensagem_padrao(request: Request):
+    """
+    Rota padrão do webhook — use esta URL no painel da Meta:
+    https://motor-atendimento-universal.onrender.com/webhook
+
+    Define o cliente ativo via variável de ambiente WHATSAPP_DEFAULT_CLIENT.
+    """
+    cliente_id = os.environ.get("WHATSAPP_DEFAULT_CLIENT", "")
+    if not cliente_id:
+        logger.error("WHATSAPP_DEFAULT_CLIENT não configurado no Render!")
+        raise HTTPException(
+            status_code=503,
+            detail="Variável WHATSAPP_DEFAULT_CLIENT não configurada. Adicione nas env vars do Render."
+        )
+    return await _processar_mensagem(cliente_id, request)
 
 @app.post("/testar/{cliente_id}")
 async def testar_bot(cliente_id: str, request: Request):
