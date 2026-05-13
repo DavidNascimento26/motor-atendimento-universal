@@ -173,11 +173,22 @@ def listar_clientes():
     except Exception:
         return {"clientes_ativos": [], "total": 0}
 
-def _verificar_token(hub_mode, hub_verify_token, hub_challenge, label=""):
-    """Lógica reutilizável de verificação de webhook Meta"""
-    verify_token = os.environ.get("VERIFY_TOKEN", "motor123")
+def _verificar_token(request: Request, label=""):
+    """
+    Lógica de verificação de webhook Meta.
+    Lê os query params direto do request porque a Meta envia 'hub.mode'
+    (com ponto) e o FastAPI não converte ponto em underscore automaticamente.
+    """
+    params = dict(request.query_params)
+    hub_mode         = params.get("hub.mode")
+    hub_verify_token = params.get("hub.verify_token")
+    hub_challenge    = params.get("hub.challenge", "")
+    verify_token     = os.environ.get("VERIFY_TOKEN", "motor123")
+
+    logger.info(f"Verificação {label}: mode={hub_mode} token_ok={hub_verify_token == verify_token}")
+
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
-        logger.info(f"Webhook verificado {label}")
+        logger.info(f"Webhook verificado com sucesso {label}")
         return PlainTextResponse(content=hub_challenge)
     raise HTTPException(status_code=403, detail="Token de verificação inválido")
 
@@ -230,14 +241,9 @@ async def _processar_mensagem(cliente_id: str, request: Request):
 # ── Rotas com cliente na URL (uso avançado) ──────────────────────────────────
 
 @app.get("/webhook/{cliente_id}")
-def verificar_webhook(
-    cliente_id: str,
-    hub_mode: str = None,
-    hub_challenge: str = None,
-    hub_verify_token: str = None
-):
+def verificar_webhook(cliente_id: str, request: Request):
     """Verificação de webhook com cliente específico"""
-    return _verificar_token(hub_mode, hub_verify_token, hub_challenge, label=f"cliente={cliente_id}")
+    return _verificar_token(request, label=f"cliente={cliente_id}")
 
 @app.post("/webhook/{cliente_id}")
 async def receber_mensagem(cliente_id: str, request: Request):
@@ -247,13 +253,9 @@ async def receber_mensagem(cliente_id: str, request: Request):
 # ── Rota genérica /webhook (use esta URL no painel da Meta) ──────────────────
 
 @app.get("/webhook")
-def verificar_webhook_padrao(
-    hub_mode: str = None,
-    hub_challenge: str = None,
-    hub_verify_token: str = None
-):
+def verificar_webhook_padrao(request: Request):
     """Verificação de webhook — URL simples para configurar no painel da Meta"""
-    return _verificar_token(hub_mode, hub_verify_token, hub_challenge, label="rota padrão")
+    return _verificar_token(request, label="rota padrão")
 
 @app.post("/webhook")
 async def receber_mensagem_padrao(request: Request):
