@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
 from groq import Groq
-import os, json, logging
+import os, json, logging, requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +18,7 @@ def get_groq_client() -> Groq:
     if _groq_client is None:
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            raise HTTPException(status_code=503, detail="GROQ_API_KEY não configurada. Adicione o Secret no Replit.")
+            raise HTTPException(status_code=503, detail="GROQ_API_KEY não configurada.")
         _groq_client = Groq(api_key=api_key)
     return _groq_client
 
@@ -76,30 +76,31 @@ REGRAS ESPECIAIS PARA CONSULTÓRIO DE PSICOLOGIA:
 
     return prompt
 
-def extrair_mensagem_meta(data: dict) -> tuple[str | None, str | None]:
-    """Extrai mensagem e número do formato Meta/WhatsApp Cloud API"""
+def extrair_mensagem_meta(data: dict) -> tuple[str | None, str | None, str | None]:
+    """Extrai mensagem, número e phone_number_id do formato Meta/WhatsApp Cloud API"""
     try:
-        entry = data["entry"][0]["changes"][0]["value"]
-        messages = entry.get("messages", [])
+        value = data["entry"][0]["changes"][0]["value"]
+        messages = value.get("messages", [])
         if not messages:
-            return None, None
+            return None, None, None
         msg = messages[0]
         texto = msg.get("text", {}).get("body")
         numero = msg.get("from")
-        return texto, numero
+        phone_number_id = value.get("metadata", {}).get("phone_number_id")
+        return texto, numero, phone_number_id
     except (KeyError, IndexError):
-        return None, None
+        return None, None, None
 
-def extrair_mensagem_zapi(data: dict) -> tuple[str | None, str | None]:
-    """Extrai mensagem e número do formato Z-API"""
+def extrair_mensagem_zapi(data: dict) -> tuple[str | None, str | None, str | None]:
+    """Extrai mensagem e número do formato Z-API (sem phone_number_id)"""
     try:
         texto = data.get("text", {}).get("message") or data.get("body")
         numero = data.get("phone") or data.get("from")
         if data.get("fromMe"):
-            return None, None
-        return texto, numero
+            return None, None, None
+        return texto, numero, None
     except Exception:
-        return None, None
+        return None, None, None
 
 def gerar_resposta_ia(system_prompt: str, mensagem_usuario: str) -> str:
     try:
@@ -117,14 +118,49 @@ def gerar_resposta_ia(system_prompt: str, mensagem_usuario: str) -> str:
         logger.error(f"Erro na API Groq: {e}")
         return "Desculpe, tive um problema técnico. Por favor, tente novamente em instantes!"
 
+def enviar_mensagem_whatsapp(numero: str, texto: str, phone_number_id: str) -> bool:
+    """Envia mensagem de texto via Meta WhatsApp Cloud API"""
+    token = os.environ.get("WHATSAPP_TOKEN")
+    if not token:
+        logger.warning("WHATSAPP_TOKEN não configurado — resposta gerada mas não enviada ao WhatsApp.")
+        return False
+
+    url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "text",
+        "text": {"body": texto}
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info(f"Mensagem enviada para {numero}")
+            return True
+        else:
+            logger.error(f"Erro ao enviar mensagem: {resp.status_code} — {resp.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Exceção ao enviar mensagem WhatsApp: {e}")
+        return False
+
 # ========== ROTAS ==========
 
 @app.get("/")
 def status():
+    token_ok    = bool(os.environ.get("WHATSAPP_TOKEN"))
+    groq_ok     = bool(os.environ.get("GROQ_API_KEY"))
     return {
         "status": "Motor de Atendimento Universal Online",
         "versao": "1.0.0",
-        "uso": "POST /webhook/{cliente_id} para receber mensagens"
+        "groq_configurado": groq_ok,
+        "whatsapp_configurado": token_ok,
+        "uso": "POST /webhook/{cliente_id} para receber mensagens do WhatsApp"
     }
 
 @app.get("/clientes")
@@ -153,7 +189,7 @@ def verificar_webhook(
 
 @app.post("/webhook/{cliente_id}")
 async def receber_mensagem(cliente_id: str, request: Request):
-    """Recebe mensagem do WhatsApp e responde com IA"""
+    """Recebe mensagem do WhatsApp, gera resposta com IA e envia de volta"""
 
     cfg = carregar_cliente(cliente_id)
     if not cfg:
@@ -164,29 +200,41 @@ async def receber_mensagem(cliente_id: str, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="JSON inválido")
 
-    logger.info(f"Mensagem recebida para {cliente_id}: {json.dumps(data)[:200]}")
+    logger.info(f"Payload recebido para {cliente_id}: {json.dumps(data)[:300]}")
 
-    # Tenta extrair mensagem nos dois formatos (Meta e Z-API)
-    texto, numero = extrair_mensagem_meta(data)
+    # Tenta extrair nos dois formatos — Meta tem priority por retornar phone_number_id
+    texto, numero, phone_number_id = extrair_mensagem_meta(data)
+    formato = "meta"
     if not texto:
-        texto, numero = extrair_mensagem_zapi(data)
+        texto, numero, phone_number_id = extrair_mensagem_zapi(data)
+        formato = "zapi"
 
     if not texto:
         return {"status": "ok", "info": "Nenhuma mensagem de texto encontrada"}
 
-    logger.info(f"[{cliente_id}] De {numero}: {texto}")
+    logger.info(f"[{cliente_id}] [{formato}] De {numero}: {texto}")
 
     system_prompt = montar_system_prompt(cfg)
     resposta = gerar_resposta_ia(system_prompt, texto)
+    logger.info(f"[{cliente_id}] Resposta gerada: {resposta}")
 
-    logger.info(f"[{cliente_id}] Resposta: {resposta}")
+    # Envia de volta ao WhatsApp (apenas se vier da Meta e tiver phone_number_id)
+    enviado = False
+    if formato == "meta" and phone_number_id:
+        enviado = enviar_mensagem_whatsapp(numero, resposta, phone_number_id)
+    elif not phone_number_id:
+        # Tenta usar o phone_number_id padrão configurado como variável de ambiente
+        phone_id_env = os.environ.get("WHATSAPP_PHONE_ID")
+        if phone_id_env and numero:
+            enviado = enviar_mensagem_whatsapp(numero, resposta, phone_id_env)
 
     return {
         "status": "ok",
         "cliente": cfg["nome_negocio"],
         "de": numero,
         "mensagem_recebida": texto,
-        "resposta_gerada": resposta
+        "resposta_gerada": resposta,
+        "enviado_whatsapp": enviado
     }
 
 @app.post("/testar/{cliente_id}")
